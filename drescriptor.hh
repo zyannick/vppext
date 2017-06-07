@@ -1,0 +1,4 @@
+#ifndef DRESCRIPTOR_HH
+#define DRESCRIPTOR_HH
+
+#endif // DRESCRIPTOR_HH
