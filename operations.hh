@@ -20,6 +20,8 @@ inline vint4 getLineFromPoint(int rho,int theta,int T_theta,int nrows,int ncols)
     if(fabs(cosinus)>0.01)
     {
         x1=int(r/cosinus);
+
+
         if(cosinus<0)
         {
             for(int b = nrows -1 ; b >=0 ; b--)

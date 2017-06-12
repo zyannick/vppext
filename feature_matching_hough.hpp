@@ -143,6 +143,31 @@ void feature_matching_hough_update(feature_matching_hough_ctx& ftx,
 }
 
 
+void brute_force_matching_basic_parallel(std::vector<vint2> descriptor1, std::vector<vint2> descriptor2,std::vector<int>& matches, int type)
+{
+    int size1 = descriptor1.size();
+    int size2 = descriptor2.size();
+    auto domain = make_box2d(size1,size2);
+    std::vector<int> min_dist(size1,-1);
+    image2d<float> mat_distance(domain);
+    image2d<float> A(domain);
+    pixel_wise(mat_distance, mat_distance.domain()) | [&] (auto &m, vint2 coord) {
+        m = 0;
+        int c2 = coord[1];
+        int c1 = coord[0];
+        float min_ = (descriptor1[c1] - descriptor2[c2]).norm();
+        if(min_dist[c1]==-1 || min_dist[c1]<min_)
+        {
+            #pragma omp critical
+            {
+                min_dist[c1] = min_;
+                matches[c1] = c2;
+            }
+        }
+    };
+
+}
+
 void brute_force_matching_basic(std::vector<vint2> descriptor1, std::vector<vint2> descriptor2,std::vector<int>& matches, int type)
 {
     int size1 = descriptor1.size();

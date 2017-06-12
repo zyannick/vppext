@@ -4,6 +4,7 @@
 #include "fast_hough.hh"
 #include "video_extruder_hough.hh"
 #include "feature_matching_hough.hh"
+#include "multipointtracker.hh"
 #include "operations.hh"
 
 namespace vppx{
@@ -84,10 +85,10 @@ inline void initializeGYSobel3x3()
 inline void initializeSobel5x5()
 {
     GxSobel5x5 << 2 ,  1  , 0 ,  -1 , -2,
-                  3  , 2 ,  0  , -2 , -3,
-                  4  , 3 ,  0  , -3 , -4,
-                  3  , 2  , 0  , -2 , -3,
-                  2  , 1 ,  0 ,  -1 , -2;
+            3  , 2 ,  0  , -2 , -3,
+            4  , 3 ,  0  , -3 , -4,
+            3  , 2  , 0  , -2 , -3,
+            2  , 1 ,  0 ,  -1 , -2;
     GxSobel5x5 = GxSobel5x5/4;
 
     GySobel5x5 << -2, -3, -4, -3 , -2,
@@ -162,6 +163,9 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
     std::list<vint2> interestedPoints;
     float T_theta = Theta_max;
     image2d<vuchar1> out(img.domain());
+    std::vector<vshort2> coord_x(rhomax*T_theta,vshort2(-1,-1));
+    std::vector<vshort2> coord_y(rhomax*T_theta,vshort2(-1,-1));
+
     //cout << "border " << img.border();
     pixel_wise(out, relative_access(img), img.domain()) | [&] (auto& o, auto i, vint2 coord) {
         int x = coord[1];
@@ -170,31 +174,15 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
         {
             float dx = 0;
             float dy = 0;
-            if(kernel_size==3)
-            {
-                 dx = -(i(1,-1)).coeffRef(0)  +  (i(1,1)).coeffRef(0)
-                        -2* (i(0,-1)).coeffRef(0)  +  2*(i(0,1)).coeffRef(0)
-                        - (i(-1,-1)).coeffRef(0)  + (i(-1,1)).coeffRef(0) ;
-                 dy = (i(1,-1)).coeffRef(0)  + 2*(i(1,0)).coeffRef(0)  + (i(1,1)).coeffRef(0)
-                        - (i(-1,-1)).coeffRef(0)  -2* (i(-1,0)).coeffRef(0)  - (i(-1,1)).coeffRef(0) ;
-            }
-            else if(kernel_size==5)
-            {
-                dx = 2*i(2,-2).coeffRef(0) + i(2,-1).coeffRef(0)  - i(2,1).coeffRef(0) -2* i(2,2).coeffRef(0)
-                        + 3 * i(1,-2).coeffRef(0) +2* i(1,-1).coeffRef(0) -2* i(1,1).coeffRef(0) -3* i(1,2).coeffRef(0)
-                        + 4 *i(0,-2).coeffRef(0) +3* i(0,-1).coeffRef(0) -3* i(0,1).coeffRef(0) -4* i(2,2).coeffRef(0)
-                        + 3 *i(-1,-2).coeffRef(0) + 2*i(-1,-1).coeffRef(0)  -2* i(-1,1).coeffRef(0) -3* i(-1,2).coeffRef(0)
-                        +2 *i(-2,-2).coeffRef(0) + i(-2,-1).coeffRef(0)  - i(-2,1).coeffRef(0) -2* i(-2,2).coeffRef(0);
-                dy = 2*i(2,-2).coeffRef(0) -3* i(2,-1).coeffRef(0) -4* i(2,0).coeffRef(0) - 3*i(2,1).coeffRef(0) -2* i(2,2).coeffRef(0)
-                        -  i(1,-2).coeffRef(0) -2* i(1,-1).coeffRef(0) -3* i(1,0).coeffRef(0) -2* i(1,1).coeffRef(0) - i(1,2).coeffRef(0)
-                        + i(-1,-2).coeffRef(0) + 2*i(-1,-1).coeffRef(0) +3* i(-1,0).coeffRef(0) +2* i(-1,1).coeffRef(0) + i(-1,2).coeffRef(0)
-                        +2* i(-2,-2).coeffRef(0) + 3*i(-2,-1).coeffRef(0) + 4*i(-2,0).coeffRef(0) + 3*i(-2,1).coeffRef(0) + 2*i(-2,2).coeffRef(0);
-            }
-
+            dx = -(i(1,-1)).coeffRef(0)  +  (i(1,1)).coeffRef(0)
+                    -2* (i(0,-1)).coeffRef(0)  +  2*(i(0,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  + (i(-1,1)).coeffRef(0) ;
+            dy = (i(1,-1)).coeffRef(0)  + 2*(i(1,0)).coeffRef(0)  + (i(1,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  -2* (i(-1,0)).coeffRef(0)  - (i(-1,1)).coeffRef(0) ;
             dx /= 4;
             dy /=4;
             float deltaI = sqrt( dx*dx + dy*dy);
-            if(deltaI>100)
+            if(deltaI>0)
             {
                 float d = x*dx + y*dy;
                 float rho = fabs(d/deltaI);
@@ -212,18 +200,38 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
                 float vote_total = deltaI;
 #pragma omp critical
                 {
+                    //vshort2 x_c = coord_x[index_rho*T_theta + index_theta];
+                    //vshort2 y_c = coord_y[index_rho*T_theta + index_theta];
+                    if((coord_x[index_rho*T_theta + index_theta])[0] == -1 && (coord_y[index_rho*T_theta + index_theta])[0]==-1)
+                    {
+                           (coord_x[index_rho*T_theta + index_theta])[0] = x;
+                            (coord_y[index_rho*T_theta + index_theta])[0] = y;
+                    }
                     t_accumulator[index_rho*T_theta + index_theta] += vote_total*poids_rho*poids_theta;
+                    (coord_x[index_rho*T_theta + index_theta])[1] = x;
+                    (coord_y[index_rho*T_theta + index_theta])[1] = y;
                     if (poids_rho < 1)
                     {
+                        if((coord_x[index_rho*T_theta + index_theta])[0] == -1 && (coord_y[index_rho*T_theta + index_theta])[0]==-1)
+                        {
+                               (coord_x[index_rho*T_theta + index_theta])[0] = x;
+                                (coord_y[index_rho*T_theta + index_theta])[0] = y;
+                        }
                         t_accumulator[(index_rho+1)*T_theta + index_theta] += vote_total*(1-poids_rho)*poids_theta;
+                        (coord_x[(index_rho+1)*T_theta + index_theta])[1] = x;
+                        (coord_y[(index_rho+1)*T_theta + index_theta])[1] = y;
                     }
                     if (poids_theta < 1)
                     {
                         t_accumulator[index_rho*T_theta + index_theta+1] += vote_total*poids_rho*(1-poids_theta);
+                        (coord_x[index_rho*T_theta + index_theta+1])[1] = x;
+                        (coord_y[index_rho*T_theta + index_theta+1])[1] = y;
                     }
                     if ((poids_rho < 1)&&(poids_theta<1))
                     {
                         t_accumulator[(index_rho+1)*T_theta + index_theta+1] += vote_total*(1-poids_rho)*(1-poids_theta);
+                        (coord_x[(index_rho+1)*T_theta + index_theta+1])[1] = x;
+                        (coord_y[(index_rho+1)*T_theta + index_theta+1])[1] = y;
                     }
                 }
             }
@@ -256,7 +264,6 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
     cout << " la taille " <<  list_temp.size() << endl;
 
     list_temp.sort( [&](vfloat2& a, vfloat2& b){return a[0] > b[0];});
-
 
 
     int lines_drawn = 0;
@@ -297,10 +304,442 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
     }
 
     //cout << "nombre " << lines_drawn << endl;
-    //cv::imwrite("okay.bmp", result);
+    cv::imwrite("okay.bmp", result);
     t.end();
 
     cout << "hough timer " << t.us() << endl;
+
+    return interestedPoints;
+}
+
+std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
+                                         std::vector<float>& t_accumulator,
+                                         int Theta_max, float& max_of_the_accu, int threshold
+                                         , image2d<vuchar3>& cluster_colors, int nb_old)
+{
+    timer t;
+    t.start();
+    typedef vfloat3 F;
+    typedef vuchar3 V;
+    int ncols = img.ncols();
+    int nrows = img.nrows();
+    int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
+    std::list<vint2> interestedPoints100;
+    std::list<vint2> interestedPoints50;
+    float T_theta = Theta_max;
+    image2d<vuchar1> out(img.domain());
+    //cout << "border " << img.border();
+    pixel_wise(out, relative_access(img), img.domain()) | [&] (auto& o, auto i, vint2 coord) {
+        int x = coord[1];
+        int y = coord[0];
+        if(x>3 && y>3 && x<ncols-3 && y<nrows-3)
+        {
+            float dx = 0;
+            float dy = 0;
+            dx = -(i(1,-1)).coeffRef(0)  +  (i(1,1)).coeffRef(0)
+                    -2* (i(0,-1)).coeffRef(0)  +  2*(i(0,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  + (i(-1,1)).coeffRef(0) ;
+            dy = (i(1,-1)).coeffRef(0)  + 2*(i(1,0)).coeffRef(0)  + (i(1,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  -2* (i(-1,0)).coeffRef(0)  - (i(-1,1)).coeffRef(0) ;
+            dx /= 4;
+            dy /=4;
+            float deltaI = sqrt( dx*dx + dy*dy);
+            if(deltaI>100)
+            {
+                float d = x*dx + y*dy;
+                float rho = fabs(d/deltaI);
+                int index_rho = (int)trunc(rho);
+                float poids_rho = 1 - rho + index_rho;
+                float theta;
+                float alpha;
+
+                /*// Calcul de l'angle de la tangente au contour
+                if (dx) alpha = atan(dy/dx); else alpha = M_PI/2;
+                // Calcul de theta, l'angle entre Ox et la droite
+                // passant par O et perpendiculaire à la droite D
+                if (alpha < 0) theta = M_PI/2 + alpha;
+                else {
+                    // 1er cas : D est en dessous de O
+                    // -PI/2 < Theta < 0 ; cx*j - cy*i < 0
+                    if (dx*x - dy*y < 0) theta = alpha - M_PI/2;
+                    // 2eme cas : D est au dessus de O
+                    // PI/2 < Theta < PI ; cx*j - cy*i > 0
+                    else theta = alpha + M_PI/2;
+                }*/
+                if(dx*dy<0 && d*dy>0)
+                    theta = M_PI + atan(dy/dx);
+                else
+                    theta = atan(dy/dx);
+                float pos_theta = ((theta + M_PI)*(T_theta-1))/(2*M_PI);
+                //Prendre les coordonnees
+                int index_theta = (int)(trunc(pos_theta));
+                float poids_theta =  1 - pos_theta + index_theta;
+                float vote_total = deltaI;
+#pragma omp critical
+                {
+                    t_accumulator[index_rho*T_theta + index_theta] += vote_total*poids_rho*poids_theta;
+                    if (poids_rho < 1)
+                    {
+                        t_accumulator[(index_rho+1)*T_theta + index_theta] += vote_total*(1-poids_rho)*poids_theta;
+                    }
+                    if (poids_theta < 1)
+                    {
+                        t_accumulator[index_rho*T_theta + index_theta+1] += vote_total*poids_rho*(1-poids_theta);
+                    }
+                    if ((poids_rho < 1)&&(poids_theta<1))
+                    {
+                        t_accumulator[(index_rho+1)*T_theta + index_theta+1] += vote_total*(1-poids_rho)*(1-poids_theta);
+                    }
+                }
+            }
+            o = vuchar1(uchar(round(deltaI)));
+        }
+        else
+            o = vuchar1(0);
+    };
+
+
+    cv::imwrite("sortieP.jpg", to_opencv(out));
+    Mat cimg = to_opencv(out);
+    Mat result;
+    cvtColor(cimg,result,CV_GRAY2BGR);
+
+    std::list<vfloat3> list_temp;
+
+    float threshold_hough = 500;
+
+    for(int rho = 0 ; rho < rhomax ; rho ++ )
+    {
+        for(int theta = 0 ; theta < T_theta ; theta++)
+        {
+            if(t_accumulator[rho*T_theta + theta]>threshold_hough)
+            {
+                list_temp.push_back(vfloat3(t_accumulator[rho*T_theta + theta], rho,theta));
+            }
+        }
+    }
+
+
+    cout << " la taille " <<  list_temp.size() << endl;
+
+    list_temp.sort( [&](vfloat3& a, vfloat3& b){return a[0] > b[0];});
+
+
+
+    //std::vector<vint2> liste_ligne;
+
+
+    int nb_lines = 0;
+    for ( auto& x : list_temp )
+    {
+        if(nb_lines==0)
+            max_of_the_accu = x[0];
+        if(nb_lines>100)
+            break;
+        vint2 coord;
+        coord = vint2(x[1],x[2]);
+        int found = 0;
+        for(auto& it : interestedPoints100  )
+        {
+            vint2 val = it;
+            if(fabs(val[0]-coord[0])<10 && fabs(val[1]-coord[1])<10)
+            {
+                found = 1;
+                break;
+            }
+        }
+
+        if(found==0)
+        {
+            interestedPoints100.push_back(coord);
+            int theta = coord[1];
+            int rho = coord[0];
+            cout << "theta " << theta << " rho " << rho << endl;
+            int x1,x2,y1,y2;
+            x1=x2=y1=y2=0;
+            //intersection avec l'axe des x
+            float t = ((2*M_PI*(theta))/ (T_theta-1)) - M_PI;
+            float r = rho;
+
+            y1=0;
+            float cosinus = cos(t);
+            if(fabs(cosinus)>0.01)
+            {
+                x1=int(r/cosinus);
+                if(cosinus<0)
+                {
+                    for(int b = nrows -1 ; b >=0 ; b--)
+                    {
+                        x1 = (int)round((rho - b*sin(t))/cos(t));
+                        if(x1>0)
+                        {
+                            y1 = b;
+                            break;
+                        }
+                    }
+                }
+            }
+
+
+            //intersection avec l'axe des y
+            x2=0;
+            float sinus = sin(t);
+            if(fabs(sinus) < 0.01)
+            {
+                x2 = x1;
+                y2 = nrows-1;
+            }
+            else
+            {
+                y2=int(r/sinus);
+                if(y2<0)
+                {
+                    for(int a = ncols-1 ; a>=0 ; a--)
+                    {
+                        y2 = (int)round((rho - a*cos(t))/sin(t));
+                        if(y2>0)
+                        {
+                            x2 = a;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            //cout << " rho " << r << " theta " << t << " max " << max << endl;
+
+            if(fabs(cosinus)<0.01)
+            {
+                x1 = ncols-1;
+                y1 = y2;
+                //continue;
+            }
+
+            cv::line(result, cv::Point(x1, y1), cv::Point(x2, y2), (0,255,255),1);
+            //cout << " nb " << nb_lines << endl;
+            nb_lines++;
+        }
+    }
+
+    std::list<vfloat3> list_temp1;
+
+    for(auto &l_c : interestedPoints100)
+    {
+        int rho = l_c[0];
+        int theta = l_c[1];
+        float moy = 0;
+        int red_value = 0;
+        int blue_value = 0;
+        int green_value = 0;
+        for(int cp_rho = rho-2; cp_rho <= rho +2 ; cp_rho++)
+        {
+            for(int cp_theta = theta - 2 ; cp_theta <= theta +2 ; cp_theta++ )
+            {
+                moy += t_accumulator[cp_rho*T_theta + cp_theta];
+            }
+        }
+        moy /= 25;
+        list_temp1.push_back(vfloat3(moy,rho,theta));
+    }
+
+    list_temp1.sort( [&](vfloat3& a, vfloat3& b){return a[0] > b[0];});
+
+
+    int nb = 0;
+
+    for(auto &l_c : list_temp1)
+    {
+        interestedPoints50.push_back(vint2(l_c[1],l_c[2]));
+        if(nb>=50)
+            break;
+        nb++;
+    }
+
+
+    //cout << "nombre " << lines_drawn << endl;
+    cv::imwrite("okay.bmp", result);
+    t.end();
+
+    cout << "hough timer " << t.us() << endl;
+
+    return interestedPoints50;
+}
+
+void adap_thresold(std::list<vfloat3> &list_temp , float &threshold_hough , int &calls ,
+                   int &nb_calls_limits_reached , int rhomax, int T_theta , std::vector<float> t_accumulator)
+{
+    if(calls>=5)
+    {
+        nb_calls_limits_reached=1;
+        return;
+    }
+    if(list_temp.size() < 100 && list_temp.size() >50)
+    {
+        return;
+    }
+    else if(list_temp.size() > 100 )
+    {
+        calls++;
+        threshold_hough *= calls;
+        reduce_number_of_max_local(list_temp,threshold_hough,rhomax,T_theta,t_accumulator);
+    }
+    else if(list_temp.size())
+    {
+        calls++;
+        threshold_hough /=calls;
+        reduce_number_of_max_local(list_temp,threshold_hough,rhomax,T_theta,t_accumulator);
+    }
+}
+
+void reduce_number_of_max_local(std::list<vfloat3> &list_temp , float threshold_hough , int rhomax, int T_theta , std::vector<float> t_accumulator)
+{
+    list_temp.clear();
+    for(int rho = 0 ; rho < rhomax ; rho ++ )
+    {
+        for(int theta = 0 ; theta < T_theta ; theta++)
+        {
+            if(t_accumulator[rho*T_theta + theta]>threshold_hough)
+            {
+                list_temp.push_back(vfloat3(t_accumulator[rho*T_theta + theta], rho,theta));
+            }
+        }
+    }
+}
+
+
+void interpolate_acculator(image2d<float> &acc, float seuil)
+{
+    image2d<float> out(acc.domain());
+    pixel_wise(out, relative_access(acc), acc.domain()) | [&] (auto& o, auto i, vint2 coord) {
+        int x = coord[1];
+        int y = coord[0];
+        if(x>3 && y>3 && x<acc.ncols()-3 && y<acc.ncols()-3 && i(0,0) > seuil)
+        {
+            o = i(0,0) + i(0,1) + i(0,-1) + i(1,0) ;
+        }
+    };
+}
+
+std::list<vint2> Hough_Lines_Parallel_new(image2d<vuchar1> img,
+                                          std::vector<float>& t_accumulator,
+                                          int Theta_max, float& max_of_the_accu, int kernel_size)
+{
+    timer t;
+    t.start();
+    typedef vfloat3 F;
+    typedef vuchar3 V;
+    int ncols = img.ncols();
+    int nrows = img.nrows();
+    int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
+    std::list<vint2> interestedPoints;
+    float T_theta = Theta_max;
+    image2d<vuchar1> out(img.domain());
+    //cout << "border " << img.border();
+    pixel_wise(out, relative_access(img), img.domain()) | [&] (auto& o, auto i, vint2 coord) {
+        int x = coord[1];
+        int y = coord[0];
+        if(x>kernel_size && y>kernel_size && x<ncols-kernel_size && y<nrows-kernel_size)
+        {
+            float dx = 0;
+            float dy = 0;
+            dx = -(i(1,-1)).coeffRef(0)  +  (i(1,1)).coeffRef(0)
+                    -2* (i(0,-1)).coeffRef(0)  +  2*(i(0,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  + (i(-1,1)).coeffRef(0) ;
+            dy = (i(1,-1)).coeffRef(0)  + 2*(i(1,0)).coeffRef(0)  + (i(1,1)).coeffRef(0)
+                    - (i(-1,-1)).coeffRef(0)  -2* (i(-1,0)).coeffRef(0)  - (i(-1,1)).coeffRef(0) ;
+            dx /= 4;
+            dy /=4;
+            float deltaI = sqrt( dx*dx + dy*dy);
+            if(deltaI>100)
+            {
+                float d = x*dx + y*dy;
+                float rho = fabs(d/deltaI);
+                int index_rho = (int)trunc(rho);
+                float poids_rho = 1 - rho + index_rho;
+                float theta;
+                if(dx*dy<0 && d*dy>0)
+                    theta = M_PI + atan(dy/dx);
+                else
+                    theta = atan(dy/dx);
+                float pos_theta = ((theta + M_PI)*(T_theta-1))/(2*M_PI);
+                //Prendre les coordonnees
+                int index_theta = (int)(trunc(pos_theta));
+                float poids_theta =  1 - pos_theta + index_theta;
+                float vote_total = deltaI;
+#pragma omp critical
+                {
+                    t_accumulator[index_rho*T_theta + index_theta] += vote_total*poids_rho*poids_theta;
+                    if (poids_rho < 1)
+                        t_accumulator[(index_rho+1)*T_theta + index_theta] += vote_total*(1-poids_rho)*poids_theta;
+                    if (poids_theta < 1)
+                        t_accumulator[index_rho*T_theta + index_theta+1] += vote_total*poids_rho*(1-poids_theta);
+                    if ((poids_rho < 1)&&(poids_theta<1))
+                        t_accumulator[(index_rho+1)*T_theta + index_theta+1] += vote_total*(1-poids_rho)*(1-poids_theta);
+                }
+            }
+            o = vuchar1(uchar(round(deltaI)));
+        }
+        else
+            o = vuchar1(0);
+    };
+
+
+    cv::imwrite("sortieP.jpg", to_opencv(out));
+    Mat cimg = to_opencv(out);
+    Mat result;
+    cvtColor(cimg,result,CV_GRAY2BGR);
+
+    std::list<vfloat3> local_maximax;
+
+
+    //#pragma omp parallel for
+    for(int rho = 0 ; rho < rhomax ; rho = rho + 10 )
+    {
+        for(int theta = 0 ; theta < T_theta ; theta = theta + 10)
+        {
+            float max = t_accumulator[rho*T_theta + theta];
+            int r_max = rho;
+            int t_max = theta;
+            float moy = 0;
+            for(int ly=0;ly<=9;ly++)
+            {
+                for(int lx=0;lx<=9;lx++)
+                {
+                    if( ( ly+rho<rhomax) && (lx+theta<T_theta) )
+                    {
+                        moy = t_accumulator[( (rho+ly)*T_theta) + (theta+lx)];
+                        if( t_accumulator[( (rho+ly)*T_theta) + (theta+lx)] > max )
+                        {
+                            max = t_accumulator[( (rho+ly)*T_theta) + (theta+lx)];
+                            r_max = rho+ly;
+                            t_max = theta+lx;
+                        }
+                    }
+                }
+            }
+            moy /= 25;
+
+            t_accumulator[rho*T_theta + theta] = moy;
+            local_maximax.push_back(vfloat3(r_max,t_max,moy));
+
+        }
+
+    }
+
+    local_maximax.sort( [&](vfloat3& a, vfloat3& b){return a[2] > b[2];});
+
+    int nb = 0;
+
+    for(auto &l : local_maximax)
+    {
+        interestedPoints.push_back(vint2(l[0],l[1]));
+        if(nb==0)
+            max_of_the_accu = l[2];
+        nb++;
+        if(nb>=10)
+            break;
+    }
+
 
     return interestedPoints;
 }
@@ -587,9 +1026,12 @@ cv::Mat accumulatorToFrame(std::vector<float> t_accumulator, float big_max, int 
 cv::Mat accumulatorToFrame(std::list<vint2> interestedPoints, int rhomax, int T_theta)
 {
     Mat T = Mat(int(rhomax),int(T_theta),CV_8UC1,cvScalar(0));
+    int r = 0;
     for(auto& ip : interestedPoints)
     {
-        circle(T,cv::Point(ip[1],ip[0]),1,Scalar(255),CV_FILLED,8,0);
+        int radius = round(5-0.1*r);
+        circle(T,cv::Point(ip[1],ip[0]),radius,Scalar(255),CV_FILLED,8,0);
+        r++;
         //break;
     }
     return T;
@@ -604,7 +1046,7 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
     initializeGYSobel3x3();
     if(mode==mode_capture_photo)
     {
-        Mat bv = cv::imread("Bikesgray.jpg",0);
+        Mat bv = cv::imread("m.png",0);
         Image img = (from_opencv<vuchar1>(bv));
         Hough_Accumulator(img,hough_parallel,T_theta);
     }
@@ -666,6 +1108,7 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
         int cp=0;
         bool first = true;
         int nframes = 0;
+        //MultiPointTracker multitracking(vint2(0,0),20, 0.1,10, 0.2,0.5,20, 0.1,2);
         cv::VideoWriter output_video;
         image2d<uchar> prev_frame(make_box2d(1,1));
         image2d<uchar> frame_gl(make_box2d(1,1));
@@ -676,6 +1119,8 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
             if(nframes%1==0)
             {
                 auto frame = rgb_to_graylevel<vuchar1>(frame_cv);
+                image2d<vuchar3> dr(frame.domain());
+                vpp::copy(dr, frame_cv);
                 timer t;
                 t.start();
                 int ncols = frame.ncols();
@@ -713,11 +1158,17 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
                     us_cpt = 0;
                 }
                 vpp::copy(frame_gl, prev_frame);
-                auto display = graylevel_to_rgb<vuchar3>(frame_gl);
-                draw::draw_trajectories(display, ctx.trajectories, 200);
+                //auto display = graylevel_to_rgb<vuchar3>(frame_gl);
+                draw_trajectories_hough(dr, ctx.trajectories, 3,T_theta,nrows,ncols);
                 cout << " frame no " << nframes << endl;
-                if (output_video.isOpened())
-                    output_video << to_opencv(display);
+                string filename = "result";
+                if(nframes<10)
+                    filename = filename +"0"+ std::to_string(nframes);
+                else
+                    filename = filename +std::to_string(nframes);
+                imwrite(filename+".bmp",to_opencv(dr));
+                /*if (output_video.isOpened())
+                    output_video << to_opencv(dr);*/
             }
 
             nframes++;
@@ -730,8 +1181,8 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
 
         cv::VideoWriter output_video;
 
-          output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
-                            cv::Size(domain.ncols(), domain.nrows()), true);
+        output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
+                          cv::Size(domain.ncols(), domain.nrows()), true);
 
 
         image2d<unsigned char> prev_frame(domain);
@@ -742,37 +1193,37 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
         int us_cpt = 0;
         foreach_videoframe(link) | [&] (const image2d<vuchar3>& frame_cv)
         {
-          auto frame = clone(frame_cv, _border = 3);
-          fill_border_mirror(frame);
-          auto frame_gl = rgb_to_graylevel<unsigned char>(frame);
-          timer t;
-          t.start();
-          if (!first)
-            video_extruder_update(ctx, prev_frame, frame_gl,
-                                  _detector_th = 10,
-                                  _keypoint_spacing = 10,
-                                  _detector_period = 1,
-                                  _max_trajectory_length = 100);
-          else first = false;
-          t.end();
+            auto frame = clone(frame_cv, _border = 3);
+            fill_border_mirror(frame);
+            auto frame_gl = rgb_to_graylevel<unsigned char>(frame);
+            timer t;
+            t.start();
+            if (!first)
+                video_extruder_update(ctx, prev_frame, frame_gl,
+                                      _detector_th = 10,
+                                      _keypoint_spacing = 10,
+                                      _detector_period = 1,
+                                      _max_trajectory_length = 100);
+            else first = false;
+            t.end();
 
-          us_cpt += t.us();
-          if (!(nframes%100))
-          {
-              std::cout << "Tracker time: " << (us_cpt / 100000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
-              us_cpt = 0;
-          }
+            us_cpt += t.us();
+            if (!(nframes%100))
+            {
+                std::cout << "Tracker time: " << (us_cpt / 100000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
+                us_cpt = 0;
+            }
 
-          vpp::copy(frame_gl, prev_frame);
-          auto display = clone(frame);
-          draw::draw_trajectories(display, ctx.trajectories, 200);
-          //cv::imshow("Trajectories", to_opencv(display));
-          //cv::waitKey(1);
+            vpp::copy(frame_gl, prev_frame);
+            auto display = clone(frame);
+            //draw::draw_trajectories(display, ctx.trajectories, 200);
+            //cv::imshow("Trajectories", to_opencv(display));
+            //cv::waitKey(1);
 
-          if (output_video.isOpened())
-            output_video << to_opencv(display);
+            if (output_video.isOpened())
+                output_video << to_opencv(display);
 
-          nframes++;
+            nframes++;
         };
     }
     else if(mode==mode_capture_webcam)

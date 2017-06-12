@@ -50,7 +50,8 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
     int rhomax = frame1.nrows();
     std::vector<float> t_accumulator(rhomax*T_theta);
     std::fill(t_accumulator.begin(),t_accumulator.end(),0);
-    auto kps = Hough_Lines_Parallel(img,t_accumulator,T_theta,max_of_accu,3);
+    image2d<vuchar3> clusters_colors(make_box2d(rhomax,T_theta));
+    auto kps = Hough_Lines_Parallel_V2(img,t_accumulator,T_theta,max_of_accu,3,clusters_colors,0);
     if(mode_video==2)
     {
         auto frame3 = from_opencv<uchar>(accumulatorToFrame(t_accumulator,max_of_accu,rhomax,T_theta));
@@ -88,7 +89,7 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
         fill_with_border(idx, -1);
         for (int i = 0; i < ctx.keypoints.size(); i++)
         {
-            cout << "position " << ctx.keypoints[i].position << endl;
+            //cout << "position " << ctx.keypoints[i].position << endl;
             vint2 pos = ctx.keypoints[i].position / keypoint_spacing;
             //assert(idx.has(pos));
             if (idx(pos) >= 0)
@@ -130,10 +131,11 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
             }
             for (auto kp : kps)
             {
+                std::cout << " rho " << kp[0] << " theta " << kp[1] << std::endl;
                 ctx.keypoints.add(keypoint<int>(kp));
             }
             ctx.keypoints.compact();
-            cout << "the other " << endl;
+            //cout << "the other " << endl;
             /*for (int i = 0; i < ctx.keypoints.size(); i++)
             {
                 auto kp = ctx.keypoints[i];

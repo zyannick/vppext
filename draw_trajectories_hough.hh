@@ -60,8 +60,10 @@ void draw_trajectories_hough(image2d<vuchar3>& out, std::vector<keypoint_traject
             color.segment<3>(0) = pt_color;
             color[3] = 0.4f*(255.f - 255.f * (t.end_frame() - i) / max_trajectory_len);
 
-            color = vuchar4(0,255,0,255);
-            draw::line2d(out, p1, p2,
+            draw::line2d(out, vint2(ligne1[1],ligne1[0]), vint2(ligne1[3],ligne1[2]),
+                         color
+                         );
+            draw::line2d(out, vint2(ligne2[1],ligne2[0]), vint2(ligne2[3],ligne2[2]),
                          color
                          );
         }

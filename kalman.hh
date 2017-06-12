@@ -1,61 +1,105 @@
-#ifndef KALMAN_HH
-#define KALMAN_HH
+#ifndef KALMAN_HPP
+#define KALMAN_HPP
 
-#include "define.hh"
-#include <memory>
+/**
+* Kalman filter implementation using Eigen. Based on the following
+* introductory paper:
+*
+*     http://www.cs.unc.edu/~welch/media/pdf/kalman_intro.pdf
+*
+* @author: Hayk Martirosyan
+* @date: 2014.11.15
+*/
 
-#include <opencv/cv.h>
+#include <eigen3/Eigen/Dense>
+#include "vpp/vpp.hh"
 
-#include <opencv2/tracking.hpp>
-#include <opencv2/tracking/kalman_filters.hpp>
+using namespace vpp;
 
-class TKalmanFilter
-{
+
+
+struct MyKalmanFilter {
+
 public:
-    enum KalmanType
-    {
-        TypeLinear,
-        TypeUnscented,
-        TypeAugmentedUnscented
-    };
 
-    TKalmanFilter(KalmanType type, Point_t pt, track_t deltaTime = 0.2, track_t accelNoiseMag = 0.5);
-    TKalmanFilter(KalmanType type, cv::Rect rect, track_t deltaTime = 0.2, track_t accelNoiseMag = 0.5);
-    ~TKalmanFilter();
+  /**
+  * Create a Kalman filter with the specified matrices.
+  *   A - System dynamics matrix
+  *   C - Output matrix
+  *   Q - Process noise covariance
+  *   R - Measurement noise covariance
+  *   P - Estimate error covariance
+  */
+  MyKalmanFilter(
+      double dt,
+      const Eigen::MatrixXd& A,
+      const Eigen::MatrixXd& C,
+      const Eigen::MatrixXd& Q,
+      const Eigen::MatrixXd& R,
+      const Eigen::MatrixXd& P
+  );
 
-    Point_t GetPointPrediction();
-    Point_t Update(Point_t pt, bool dataCorrect);
+  /**
+  * Create a blank estimator.
+  */
+  MyKalmanFilter();
 
-    cv::Rect GetRectPrediction();
-    cv::Rect Update(cv::Rect rect, bool dataCorrect);
+  /**
+  * Initialize the filter with initial states as zero.
+  */
+  void init();
 
-private:
-    KalmanType m_type;
-    std::unique_ptr<cv::KalmanFilter> m_linearKalman;
-#if USE_OCV_UKF
-    cv::Ptr<cv::tracking::UnscentedKalmanFilter> m_uncsentedKalman;
-#endif
+  /**
+  * Initialize the filter with a guess for initial states.
+  */
+  void init(double t0, const Eigen::VectorXd& x0);
 
-    std::deque<Point_t> m_initialPoints;
-    std::deque<cv::Rect> m_initialRects;
-    static const size_t MIN_INIT_VALS = 4;
+  /**
+  * Update the estimated state based on measured values. The
+  * time step is assumed to remain constant.
+  */
+  void update(const Eigen::VectorXd& y);
+  vint2 predict();
+  vint2 correct(const Eigen::VectorXd& y);
 
-    Point_t m_lastPointResult;
-    cv::Rect_<track_t> m_lastRectResult;
-    cv::Rect_<track_t> m_lastRect;
+  /**
+  * Update the estimated state based on measured values,
+  * using the given time step and dynamics matrix.
+  */
+  void update(const Eigen::VectorXd& y, double dt, const Eigen::MatrixXd A);
+  vint2 predict(double dt, const Eigen::MatrixXd A);
+  vint2 correct(const Eigen::VectorXd& y, double dt, const Eigen::MatrixXd A);
 
-    bool m_initialized;
-    track_t m_deltaTime;
-    track_t m_accelNoiseMag;
+  /**
+  * Return the current state and time.
+  */
+  Eigen::VectorXd state() { return x_hat; };
+  double time() { return t; };
 
-    void CreateLinear(Point_t xy0, Point_t xyv0);
-    void CreateLinear(cv::Rect_<track_t> rect0, Point_t rectv0);
-    void CreateUnscented(Point_t xy0, Point_t xyv0);
-    void CreateUnscented(cv::Rect_<track_t> rect0, Point_t rectv0);
-    void CreateAugmentedUnscented(Point_t xy0, Point_t xyv0);
-    void CreateAugmentedUnscented(cv::Rect_<track_t> rect0, Point_t rectv0);
+//private:
+
+  // Matrices for computation
+  Eigen::MatrixXd A, C, Q, R, P, K, P0;
+
+  // System dimensions
+  int m, n;
+
+  // Initial and current time
+  double t0, t;
+
+  // Discrete time step
+  double dt;
+
+  // Is the filter initialized?
+  bool initialized;
+
+  // n-size identity
+  Eigen::MatrixXd I;
+
+  // Estimated states
+  Eigen::VectorXd x_hat, x_hat_new;
 };
 
 #include "kalman.hpp"
 
-#endif // KALMAN_HH
+#endif // KALMAN_HPP
