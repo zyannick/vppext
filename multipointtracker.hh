@@ -10,7 +10,7 @@ class MultiPointTracker
 {
 private:
     // The actual object trackers.
-    std::vector<kalmantracker> kalmanTrackers;
+    std::vector<basic_kalman_tracker> kalmanTrackers;
 
     // We only care about trackers who have been alive for the
     // given lifetimeThreshold number of frames.

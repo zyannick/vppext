@@ -15,7 +15,7 @@ MultiPointTracker::MultiPointTracker (vint2 frameSize,
                                       int lifetimeSuppressionThreshold,
                                       float distanceSuppressionThreshold,
                                       float ageSuppressionThreshold) {
-    this->kalmanTrackers = std::vector<kalmantracker>();
+    this->kalmanTrackers = std::vector<basic_kalman_tracker>();
     this->frameSize = frameSize;
     this->lifetimeThreshold = lifetimeThreshold;
     this->distanceThreshold = distanceThreshold;
@@ -57,7 +57,7 @@ void MultiPointTracker::update(const std::vector<vfloat2>& massCenters,
     // If there are no Kalman trackers, make one for each detection.
     if (this->kalmanTrackers.empty()) {
         for (auto massCenter : massCenters) {
-            this->kalmanTrackers.push_back(kalmantracker(vint2(massCenter[0],massCenter[1]),
+            this->kalmanTrackers.push_back(basic_kalman_tracker(vint2(massCenter[0],massCenter[1]),
                                                              this->dt,
                                                              this->magnitudeOfAccelerationNoise));
         }
@@ -144,7 +144,7 @@ void MultiPointTracker::update(const std::vector<vfloat2>& massCenters,
     // Create new trackers for the unassigned mass centers.
     for (size_t i = 0; i < centersWithoutKalman.size(); i++) {
         vfloat2 to = massCenters[centersWithoutKalman[i]];
-        this->kalmanTrackers.push_back(kalmantracker(vint2(to[0],to[1])));
+        this->kalmanTrackers.push_back(basic_kalman_tracker(vint2(to[0],to[1])));
     }
 
     // Update the Kalman filters.

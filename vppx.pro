@@ -41,9 +41,7 @@ HEADERS += \
     list_distances.hpp \
     drescriptor.hh \
     drescriptor.hpp \
-    kalman.hh \
     define.hh \
-    kalman.hpp \
     operations.hh \
     kdtree.hh \
     kdtree.hpp \
@@ -52,4 +50,12 @@ HEADERS += \
     hungarian.hh \
     hungarian.hpp \
     multipointtracker.hpp \
-    multipointtracker.hh
+    multipointtracker.hh \
+    tools.hh \
+    tools.hpp \
+    measurement.hh \
+    basic_kalman_filter.hh \
+    basic_kalman_filter.hpp \
+    unscented_kalman_filter.hh \
+    unscented_kalman_filter.hpp \
+    kalman_filters/t.hh

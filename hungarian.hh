@@ -1,12 +1,15 @@
 #ifndef HUNGARIAN_HH
 #define HUNGARIAN_HH
 
+
+#include <vpp/vpp.hh>
 #include <vector>
 #include <iostream>
 #include <limits>
 #include <time.h>
 // http://community.topcoder.com/tc?module=Static&d1=tutorials&d2=hungarianAlgorithm
 using namespace std;
+using namespace vpp;
 class AssignmentProblemSolver
 {
 private:

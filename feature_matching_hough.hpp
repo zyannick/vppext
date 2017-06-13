@@ -36,7 +36,7 @@ template <typename... OPTS>
 void feature_matching_hough_update(feature_matching_hough_ctx& ftx,
                                    const image2d<unsigned char>& frame1,
                                    const image2d<unsigned char>& frame2,
-                                   image2d<vuchar1> img,
+                                   image2d<vuchar1> img,bool first, std::list<vint2> old_values,
                                    //float precision_runtime_balance = 0,
                                    OPTS... options)
 {
@@ -62,7 +62,32 @@ void feature_matching_hough_update(feature_matching_hough_ctx& ftx,
     auto frame3 = from_opencv<uchar>(accumulatorToFrame(kps,rhomax,T_theta));
     vpp::copy(frame3,frame2);
 
+/*
+    if(!first)
+    {
+        float min = 100000;
+        int max_rank = 0;
+        for(auto &k : kps)
+        {
+            std::vector<vfloat3> mins(3,vfloat3(0,0,-1));
+            int found = 0;
+            int old_max_rank = 0;
+            for(auto &o : old_values)
+            {
+                if( abs(old_max_rank-max_rank) > 20)
+                {
+                    break;
+                }
+                float the_norm = (o - k).norm();
+                if(min<the_norm)
+                    min = the_norm;
+                old_max_rank++;
+            }
+            max_rank++;
+        }
+    }
 
+*/
 
     // Filtering.
     // Merge particules that converged to the same pixel.

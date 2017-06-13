@@ -6,7 +6,7 @@
 using namespace vpp;
 using namespace Eigen;
 
-kalmantracker::kalmantracker(vint2 startPt,
+basic_kalman_tracker::basic_kalman_tracker(vint2 startPt,
                                  float dt,
                                  float magnitudeOfAccelerationNoise,
                                  size_t maxTrajectorySize) {
@@ -49,7 +49,7 @@ kalmantracker::kalmantracker(vint2 startPt,
                 .1, .1, .1, .1,
                 .1, .1, .1, .1;
 
-        this->kf = std::make_unique<MyKalmanFilter>(dt,A,C,Q,R,P);
+        this->kf = std::make_unique<BasicKalmanFilter>(dt,A,C,Q,R,P);
         // Initialize filter with 4 dynamic parameters (x, y, x velocity, y
         // velocity), 2 measurement parameters (x, y), and no control parameters.
         Eigen::VectorXd measure(2);
@@ -59,7 +59,7 @@ kalmantracker::kalmantracker(vint2 startPt,
 
     }
 
-    vint2 kalmantracker::correct(vint2 pt) {
+    vint2 basic_kalman_tracker::correct(vint2 pt) {
         Eigen::VectorXd measurement(2);
         measurement[0] = pt[0];
         measurement[1] = pt[1];
@@ -69,7 +69,7 @@ kalmantracker::kalmantracker(vint2 startPt,
         return estimated;
     }
 
-    vint2 kalmantracker::predict() {
+    vint2 basic_kalman_tracker::predict() {
         vint2 prediction = this->kf->predict();
         vint2 predictedPt(prediction[0], prediction[1]);
         /*this->kf->statePre.copyTo(this->kf->statePost);
@@ -80,11 +80,11 @@ kalmantracker::kalmantracker(vint2 startPt,
         //return vint2(0,0);
     }
 
-    vint2 kalmantracker::latestPrediction() {
+    vint2 basic_kalman_tracker::latestPrediction() {
         return this->prediction;
     }
 
-    void kalmantracker::addPointToTrajectory(vint2 pt) {
+    void basic_kalman_tracker::addPointToTrajectory(vint2 pt) {
         if (this->trajectory->size() >= this->max_trajectory_size) {
             this->trajectory->erase(this->trajectory->begin(),
                                     this->trajectory->begin()+1);
@@ -93,25 +93,25 @@ kalmantracker::kalmantracker(vint2 startPt,
     }
 
 
-    long kalmantracker::getLifetime() {
+    long basic_kalman_tracker::getLifetime() {
         return this->lifetime;
     }
 
-    void kalmantracker::noUpdateThisFrame() {
+    void basic_kalman_tracker::noUpdateThisFrame() {
         this->lifetime++;
         this->numberOfFramesWithoutUpdate++;
     }
 
-    const int kalmantracker::getNumFramesWithoutUpdate() {
+    const int basic_kalman_tracker::getNumFramesWithoutUpdate() {
         return this->numberOfFramesWithoutUpdate;
     }
 
-    void kalmantracker::gotUpdate() {
+    void basic_kalman_tracker::gotUpdate() {
         this->lifetime++;
         this->numberOfFramesWithoutUpdate = 0;
     }
 
-    TrackingOutput kalmantracker::latestTrackingOutput() {
+    TrackingOutput basic_kalman_tracker::latestTrackingOutput() {
         auto output = TrackingOutput{
             this->id,
             this->latestPrediction(),

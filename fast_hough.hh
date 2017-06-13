@@ -23,7 +23,8 @@
 //#include <unsupported/Eigen/BVH>
 
 #include "symbols.hh"
-#include "kalman.hh"
+#include "basic_kalman_filter.hh"
+#include "unscented_kalman_filter.hh"
 
 
 using namespace vpp;

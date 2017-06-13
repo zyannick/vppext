@@ -202,7 +202,8 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
                 {
                     //vshort2 x_c = coord_x[index_rho*T_theta + index_theta];
                     //vshort2 y_c = coord_y[index_rho*T_theta + index_theta];
-                    if((coord_x[index_rho*T_theta + index_theta])[0] == -1 && (coord_y[index_rho*T_theta + index_theta])[0]==-1)
+                    if((coord_x[index_rho*T_theta + index_theta])[0] == -1
+                            && (coord_y[index_rho*T_theta + index_theta])[0]==-1)
                     {
                            (coord_x[index_rho*T_theta + index_theta])[0] = x;
                             (coord_y[index_rho*T_theta + index_theta])[0] = y;
@@ -212,10 +213,11 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
                     (coord_y[index_rho*T_theta + index_theta])[1] = y;
                     if (poids_rho < 1)
                     {
-                        if((coord_x[index_rho*T_theta + index_theta])[0] == -1 && (coord_y[index_rho*T_theta + index_theta])[0]==-1)
+                        if((coord_x[(index_rho+1)*T_theta + index_theta])[0] == -1
+                                && (coord_y[(index_rho+1)*T_theta + index_theta])[0]==-1)
                         {
-                               (coord_x[index_rho*T_theta + index_theta])[0] = x;
-                                (coord_y[index_rho*T_theta + index_theta])[0] = y;
+                               (coord_x[(index_rho+1)*T_theta + index_theta])[0] = x;
+                                (coord_y[(index_rho+1)*T_theta + index_theta])[0] = y;
                         }
                         t_accumulator[(index_rho+1)*T_theta + index_theta] += vote_total*(1-poids_rho)*poids_theta;
                         (coord_x[(index_rho+1)*T_theta + index_theta])[1] = x;
@@ -223,12 +225,24 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
                     }
                     if (poids_theta < 1)
                     {
+                        if((coord_x[index_rho*T_theta + index_theta+1])[0] == -1
+                                && (coord_y[index_rho*T_theta + index_theta+1])[0]==-1)
+                        {
+                               (coord_x[index_rho*T_theta + index_theta+1])[0] = x;
+                                (coord_y[index_rho*T_theta + index_theta+1])[0] = y;
+                        }
                         t_accumulator[index_rho*T_theta + index_theta+1] += vote_total*poids_rho*(1-poids_theta);
                         (coord_x[index_rho*T_theta + index_theta+1])[1] = x;
                         (coord_y[index_rho*T_theta + index_theta+1])[1] = y;
                     }
                     if ((poids_rho < 1)&&(poids_theta<1))
                     {
+                        if((coord_x[(index_rho+1)*T_theta + index_theta+1])[0] == -1
+                                && (coord_y[(index_rho+1)*T_theta + index_theta+1])[0]==-1)
+                        {
+                               (coord_x[(index_rho+1)*T_theta + index_theta+1])[0] = x;
+                                (coord_y[(index_rho+1)*T_theta + index_theta+1])[0] = y;
+                        }
                         t_accumulator[(index_rho+1)*T_theta + index_theta+1] += vote_total*(1-poids_rho)*(1-poids_theta);
                         (coord_x[(index_rho+1)*T_theta + index_theta+1])[1] = x;
                         (coord_y[(index_rho+1)*T_theta + index_theta+1])[1] = y;
@@ -297,8 +311,9 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
             interestedPoints.push_back(coord);
             int rho = coord[0];
             int theta = coord[1];
-            vint4 ligne = getLineFromPoint(rho,theta,T_theta,nrows,ncols);
-            cv::line(result, cv::Point(ligne[0], ligne[1]), cv::Point(ligne[2], ligne[3]), (0,255,255),1);
+            //vint4 ligne = getLineFromPoint(rho,theta,T_theta,nrows,ncols);
+            //cv::line(result, cv::Point(ligne[0], ligne[1]), cv::Point(ligne[2], ligne[3]), (0,255,255),1);
+            cv::line(result, cv::Point((coord_x[rho*T_theta+theta])[0],(coord_y[rho*T_theta+theta])[0]), cv::Point((coord_x[rho*T_theta+theta])[1],(coord_y[rho*T_theta+theta])[1]), (0,255,255),1);
             lines_drawn++;
         }
     }
@@ -1040,7 +1055,7 @@ cv::Mat accumulatorToFrame(std::list<vint2> interestedPoints, int rhomax, int T_
 void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
 {
     typedef image2d<vuchar1> Image;
-    char* link = "videos/mooving.avi";
+    char* link = "videos/endgp.avi";
     int T_theta = getThetaMax(discr);
     initializeGXSobel3x3();
     initializeGYSobel3x3();
@@ -1158,17 +1173,17 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
                     us_cpt = 0;
                 }
                 vpp::copy(frame_gl, prev_frame);
-                //auto display = graylevel_to_rgb<vuchar3>(frame_gl);
-                draw_trajectories_hough(dr, ctx.trajectories, 3,T_theta,nrows,ncols);
+                auto display = graylevel_to_rgb<vuchar3>(frame_gl);
+                draw::draw_trajectories(display, ctx.trajectories, 3/*,T_theta,nrows,ncols*/);
                 cout << " frame no " << nframes << endl;
-                string filename = "result";
+                /*string filename = "result";
                 if(nframes<10)
                     filename = filename +"0"+ std::to_string(nframes);
                 else
                     filename = filename +std::to_string(nframes);
-                imwrite(filename+".bmp",to_opencv(dr));
-                /*if (output_video.isOpened())
-                    output_video << to_opencv(dr);*/
+                imwrite(filename+".bmp",to_opencv(dr));*/
+                if (output_video.isOpened())
+                    output_video << to_opencv(dr);
             }
 
             nframes++;
