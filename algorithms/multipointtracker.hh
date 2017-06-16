@@ -2,15 +2,17 @@
 #define MULTIPOINTTRACKER_H
 
 #include <vpp/vpp.hh>
-#include "kalmantracker.hh"
+#include "kalman_tracker/kalmantracker.hh"
 using namespace vpp;
 using namespace std;
 
-class MultiPointTracker
+struct MultiPointTracker
 {
 private:
     // The actual object trackers.
-    std::vector<basic_kalman_tracker> kalmanTrackers;
+    std::vector<basic_kalman_tracker> basicKalmanTrackers;
+
+    std::vector<unscented_kalman_tracker> unscentedKalmanTrackers;
 
     // We only care about trackers who have been alive for the
     // given lifetimeThreshold number of frames.
@@ -35,7 +37,8 @@ private:
     float magnitudeOfAccelerationNoise;
 
     // Check if the Kalman filter at index i has another Kalman filter that can suppress it.
-    bool hasSuppressor(size_t i);
+    bool hasSuppressorBasic(size_t i);
+    bool hasSuppressorUnscented(size_t i);
 
     // Any Kalman filter with a lifetime above this value cannot be suppressed.
     int lifetimeSuppressionThreshold;
@@ -61,9 +64,20 @@ public:
                       int lifetimeSuppressionThreshold = 20,
                       float distanceSuppressionThreshold = 0.1,
                       float ageSuppressionThreshold = 2);
+    MultiPointTracker(vint2 frameSize,
+                      long lifetimeThreshold = 20,
+                      float distanceThreshold = 0.1,
+                      long missedFramesThreshold = 10,
+                      float magnitudeOfAccelerationNoise = 0.5,
+                      int lifetimeSuppressionThreshold = 20,
+                      float distanceSuppressionThreshold = 0.1,
+                      float ageSuppressionThreshold = 2);
     // Update the object tracker with the mass centers of the observed boundings rects.
-    void update(const std::vector<vfloat2>& massCenters,
+    void updateBasicKalmanTrackers(const std::vector<vfloat2>& massCenters,
                 std::vector<TrackingOutput>& trackingOutputs);
+    void updateUnscentedKalmanTrackers(const std::vector<vfloat2>& massCenters,
+                                    /*const std::vector<cv::Rect>& boundingRects,*/
+                                    std::vector<TrackingOutput>& trackingOutputs, int max_trajectory_size);
 };
 
 #include "multipointtracker.hpp"

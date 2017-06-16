@@ -16,15 +16,14 @@
 #include <vpp/algorithms/video_extruder.hh>
 #include <vpp/utils/opencv_utils.hh>
 #include <vpp/draw/draw_trajectories.hh>
-#include <draw_trajectories_hough.hh>
+#include <algorithms/draw_trajectories_hough.hh>
 
 
 #include <eigen3/Eigen/Core>
 //#include <unsupported/Eigen/BVH>
 
 #include "symbols.hh"
-#include "basic_kalman_filter.hh"
-#include "unscented_kalman_filter.hh"
+//#include "tracking_algorithms.hh"
 
 
 using namespace vpp;
@@ -38,7 +37,7 @@ namespace vppx{
 enum class Theta_max : int32_t { SMALL = 255, MEDIUM = 500, LARGE = 1000 , XLARGE = 1500};
 enum class Type_video_hough : int8_t { ONLY_CLUSTERS = 1 , ALL_POINTS = 2 };
 enum class Type_capture : int16_t { webcam = 0 , photo = 1 , video = 3 } ;
-enum class Type_tracking : int16_t { lucas_kanade = 0 , kalman_track = 1 , orb = 2 , sift = 3 , surf = 4 , adapt = 5 };
+enum class Type_tracking : int16_t { no_tracking = 0 , lucas_kanade = 1 , kalman_track = 2 , video_extruder_video = 3};
 void Hough_Accumulator(image2d<vuchar1> img, int mode , int T_theta);
 cv::Mat Hough_Accumulator_Video_Map_and_Clusters(image2d<vuchar1> img, int mode , int T_theta,
                                                  std::vector<float>& t_accumulator, std::list<vint2>& interestedPoints,
@@ -55,8 +54,7 @@ std::list<vint2> Hough_Lines_Parallel_Box(image2d<vuchar1> img,
                                           int Theta_max, float& max_of_the_accu);
 std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
                                       std::vector<float>& t_accumulator,
-                                      int Theta_max, float& max_of_the_accu, int threshold,
-                                         image2d<vuchar3> &cluster_colors , int nb_old);
+                                      int Theta_max, float& max_of_the_accu);
 std::priority_queue<vint2> Hough_Lines_Parallel_V3(image2d<vuchar1> img,
                                       std::vector<float>& t_accumulator,
                                       int Theta_max, float& max_of_the_accu, int threshold,
@@ -68,7 +66,8 @@ void Hough_Lines_Parallel_Map(image2d<vuchar1> img);
 int getThetaMax(Theta_max discr);
 cv::Mat accumulatorToFrame(std::vector<float> t_accumulator, float max, int rhomax, int T_theta);
 cv::Mat accumulatorToFrame(std::list<vint2> interestedPoints, int rhomax, int T_theta);
-void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video );
+void hough_image(int T_theta);
+void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video, Type_tracking tracking_type );
 
 #define boule_theta_255 0.123685
 #define boule_theta_1000 0.0314474
@@ -84,6 +83,7 @@ void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video );
 #define mode_capture_try 4
 #define mode_capture_vid_try 5
 #define mode_capture_kalman 6
+#define mode_capture_local 7
 Matrix<float,3,3> GySobel3x3;
 Matrix<float,3,3> GxSobel3x3;
 Matrix<float,5,5> GySobel5x5;

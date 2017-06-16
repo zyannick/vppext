@@ -49,12 +49,12 @@ basic_kalman_tracker::basic_kalman_tracker(vint2 startPt,
                 .1, .1, .1, .1,
                 .1, .1, .1, .1;
 
-        this->kf = std::make_unique<BasicKalmanFilter>(dt,A,C,Q,R,P);
+        this->bkf = std::make_unique<BasicKalmanFilter>(dt,A,C,Q,R,P);
         // Initialize filter with 4 dynamic parameters (x, y, x velocity, y
         // velocity), 2 measurement parameters (x, y), and no control parameters.
         Eigen::VectorXd measure(2);
         measure << startPt[0],startPt[1];
-        this->kf->init(0.0,measure);
+        this->bkf->init(0.0,measure);
 
 
     }
@@ -63,14 +63,14 @@ basic_kalman_tracker::basic_kalman_tracker(vint2 startPt,
         Eigen::VectorXd measurement(2);
         measurement[0] = pt[0];
         measurement[1] = pt[1];
-        vint2 estimated = this->kf->correct(measurement);
+        vint2 estimated = this->bkf->correct(measurement);
         this->prediction[0] = estimated[0];
         this->prediction[1] = estimated[1];
         return estimated;
     }
 
     vint2 basic_kalman_tracker::predict() {
-        vint2 prediction = this->kf->predict();
+        vint2 prediction = this->bkf->predict();
         vint2 predictedPt(prediction[0], prediction[1]);
         /*this->kf->statePre.copyTo(this->kf->statePost);
         this->kf->errorCovPre.copyTo(this->kf->errorCovPost);*/

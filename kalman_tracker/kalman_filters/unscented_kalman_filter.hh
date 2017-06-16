@@ -1,15 +1,17 @@
 #ifndef UKF_HH
 #define UKF_HH
 
-#include "measurement.hh"
+#include "algorithms/measurement.hh"
 #include "eigen3/Eigen/Dense"
+#include <vpp/vpp.hh>
 #include <vector>
 #include <string>
 #include <fstream>
-#include "tools.hh"
+#include "miscellanous/tools.hh"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using namespace vpp;
 
 class Unscented_Kalman_Filter {
 public:
@@ -94,12 +96,14 @@ public:
    * @param meas_package The latest measurement data of either radar or laser
    */
   void ProcessMeasurement(const MeasurementPackage meas_package);
+  void ProcessMeasurement(const vint2 values, float dt);
 
   /**
    * SetInitialValues
    * @param meas_package Use the first measurement to initialize the filter
    */
   void SetInitialValues(const MeasurementPackage meas_package);
+  void SetInitialValues(const vint2 values, float dt);
 
   /**
    * Computes the AugmentedSigmaPoints
@@ -129,6 +133,7 @@ public:
   * Computes the predicted state in lidar measurement space z_pred, the predicted covariance S and Tc
   */
   void PredictLidarMeasurement(VectorXd &z_out, MatrixXd &S_out, MatrixXd &Tc_out);
+  void PredictMeasurement(VectorXd &z_out, MatrixXd &S_out, MatrixXd &Tc_out);
 
   /**
    * Prediction Predicts sigma points, the state, and the state covariance
@@ -142,6 +147,7 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateLidar(MeasurementPackage meas_package, VectorXd &z_pred, MatrixXd &Tc, MatrixXd &S);
+  void Update(vint2 values,float dt, VectorXd &z_pred, MatrixXd &Tc, MatrixXd &S);
 
   /**
    * Updates the state and the state covariance matrix using a radar measurement
@@ -149,5 +155,7 @@ public:
    */
   void UpdateRadar(MeasurementPackage meas_package, VectorXd &z_pred, MatrixXd &Tc, MatrixXd &S);
 };
+
+#include "unscented_kalman_filter.hpp"
 
 #endif // UKF_HH

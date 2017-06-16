@@ -10,7 +10,7 @@
 #include <vpp/algorithms/symbols.hh>
 #include <vpp/algorithms/optical_flow.hh>
 #include <vpp/algorithms/fast_detector/fast.hh>
-#include <fast_hough.hh>
+#include <algorithms/fast_hough.hh>
 
 namespace vppx
 {
@@ -36,7 +36,6 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
 
     // Options.
     auto opts = D(options...);
-
     const int detector_th = opts.get(_detector_th, 10);
     const int keypoint_spacing = opts.get(_keypoint_spacing, 10);
     const int detector_period = opts.get(_detector_period, 5);
@@ -51,7 +50,8 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
     std::vector<float> t_accumulator(rhomax*T_theta);
     std::fill(t_accumulator.begin(),t_accumulator.end(),0);
     image2d<vuchar3> clusters_colors(make_box2d(rhomax,T_theta));
-    auto kps = Hough_Lines_Parallel_V2(img,t_accumulator,T_theta,max_of_accu,3,clusters_colors,0);
+    auto kpp = Hough_Lines_Parallel_V2(img,t_accumulator,T_theta,max_of_accu);
+    auto kps = Hough_Lines_Parallel_V2(img,t_accumulator,T_theta,max_of_accu);
     if(mode_video==2)
     {
         auto frame3 = from_opencv<uchar>(accumulatorToFrame(t_accumulator,max_of_accu,rhomax,T_theta));
@@ -63,7 +63,7 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
         vpp::copy(frame3,frame2);
     }
 
-
+/*
     // Optical flow vectors.
     ctx.keypoints.prepare_matching();
     semi_dense_optical_flow
@@ -131,16 +131,12 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
             }
             for (auto kp : kps)
             {
-                std::cout << " rho " << kp[0] << " theta " << kp[1] << std::endl;
+                std::cout << " rho 4 " << kp[0] << " theta " << kp[1] << std::endl;
                 ctx.keypoints.add(keypoint<int>(kp));
             }
             ctx.keypoints.compact();
             //cout << "the other " << endl;
-            /*for (int i = 0; i < ctx.keypoints.size(); i++)
-            {
-                auto kp = ctx.keypoints[i];
-                std::cout << "Point  " << kp.position << std::endl;
-            }*/
+
             ctx.keypoints.sync_attributes(ctx.trajectories, keypoint_trajectory(ctx.frame_id));
         }
     }
@@ -156,7 +152,103 @@ void video_extruder_hough_update(video_extruder_hough_ctx& ctx,
         }
         else
             ctx.trajectories[i].die();
+    }*/
+
+}
+
+
+line_tracker_kalman_ctx line_tracker_kalman_init(vint2 frameSize,
+                                                 long lifetimeThreshold ,
+                                                 float distanceThreshold ,
+                                                 long missedFramesThreshold ,
+                                                 float dt ,
+                                                 float magnitudeOfAccelerationNoise ,
+                                                 int lifetimeSuppressionThreshold ,
+                                                 float distanceSuppressionThreshold ,
+                                                 float ageSuppressionThreshold )
+{
+    line_tracker_kalman_ctx res(frameSize,lifetimeThreshold,distanceThreshold,missedFramesThreshold,
+                                dt,magnitudeOfAccelerationNoise,lifetimeSuppressionThreshold,distanceSuppressionThreshold,ageSuppressionThreshold);
+    res.frame_id = -1;
+    return res;
+}
+
+line_tracker_kalman_ctx line_tracker_kalman_init(
+                                                 long lifetimeThreshold ,
+                                                 float distanceThreshold ,
+                                                 long missedFramesThreshold ,
+                                                 float dt ,
+                                                 float magnitudeOfAccelerationNoise ,
+                                                 int lifetimeSuppressionThreshold ,
+                                                 float distanceSuppressionThreshold ,
+                                                 float ageSuppressionThreshold )
+{
+    line_tracker_kalman_ctx res(lifetimeThreshold,distanceThreshold,missedFramesThreshold,
+                                dt,magnitudeOfAccelerationNoise,lifetimeSuppressionThreshold,distanceSuppressionThreshold,ageSuppressionThreshold);
+    res.frame_id = -1;
+    return res;
+}
+
+// Update the video extruder with a new frame.
+template <typename... OPTS>
+void line_tracker_kalman_update(line_tracker_kalman_ctx& ctx,
+                                 const image2d<float>& frame1,
+                                 const image2d<float>& frame2,
+                                std::vector<float> &_acc_1,
+                                std::vector<float> &_acc_2,
+                                bool first,
+                                 image2d<vuchar1> img,int mode_video,
+                                 //float precision_runtime_balance = 0,
+                                 OPTS... options)
+{
+    ctx.frame_id++;
+
+    // Options.
+    auto opts = D(options...);
+
+    const int life_time_threshold = opts.get(_life_time_threshold, 10);
+    const int distance_threshold = opts.get(_distance_threshold, 10);
+    const int missed_frame_threshold = opts.get(_missed_frame_threshold, 5);
+    const int magnitude_acceleration_noise = opts.get(_magnitude_acceleration_noise, 5);
+    const int life_time_supression_threshold = opts.get(_life_time_supression_threshold, 5);
+    const int age_supression_threshold = opts.get(_age_supression_threshold, 5);
+    const int max_trajectory_length = opts.get(_max_trajectory_length, 15);
+
+
+    float max_of_accu = 0;
+    int T_theta = frame1.ncols();
+    int rhomax = frame1.nrows();
+    std::vector<float> t_accumulator(rhomax*T_theta);
+    std::fill(t_accumulator.begin(),t_accumulator.end(),0);
+    image2d<vuchar3> clusters_colors(make_box2d(rhomax,T_theta));
+    auto kps = vppx::Hough_Lines_Parallel_V2(img,t_accumulator,T_theta,max_of_accu);
+    _acc_2 = t_accumulator;
+    std::vector<vfloat2> massCenters;
+    for(auto &k : kps)
+    {
+        massCenters.push_back(vfloat2(k[0],k[1]));
     }
+
+    if(mode_video==2)
+    {
+        auto frame3 = from_opencv<uchar>(accumulatorToFrame(t_accumulator,max_of_accu,rhomax,T_theta));
+        vpp::copy(frame3,frame2);
+    }
+    else if(mode_video==1)
+    {
+        auto frame3 = from_opencv<uchar>(accumulatorToFrame(kps,rhomax,T_theta));
+        vpp::copy(frame3,frame2);
+    }
+
+    if(!first)
+    ctx.tracking_in_hough_space(massCenters,3,_acc_1,_acc_2);
+
+    _acc_1 = _acc_2;
+
+    // Optical flow vectors.
+    //ctx.keypoints.prepare_matching();
+
+
 
 }
 

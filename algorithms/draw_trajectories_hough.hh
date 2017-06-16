@@ -4,7 +4,7 @@
 #include <vpp/draw/draw.hh>
 #include <vpp/core/keypoint_trajectory.hh>
 #include <iod/sio_utils.hh>
-#include <operations.hh>
+#include <miscellanous/operations.hh>
 
 
 namespace vppx

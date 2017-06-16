@@ -3,11 +3,10 @@
 
 
 #include <vpp/vpp.hh>
-#include "basic_kalman_filter.hh"
-#include "unscented_kalman_filter.hh"
+#include "kalman_filters/basic_kalman_filter.hh"
+#include "kalman_filters/unscented_kalman_filter.hh"
 using namespace vpp;
 using namespace std;
-using namespace vppx;
 
 /**
  * @brief The multikalmanfilter struct
@@ -44,7 +43,7 @@ struct basic_kalman_tracker{
     vint2 correct(vint2 pt);
     TrackingOutput latestTrackingOutput();
 //private :
-    std::unique_ptr<BasicKalmanFilter> kf;
+    std::unique_ptr<BasicKalmanFilter> bkf;
     int numberOfFramesWithoutUpdate;
     int max_trajectory_size;
     // Store the latest prediction.
@@ -59,13 +58,16 @@ struct basic_kalman_tracker{
 };
 
 struct unscented_kalman_tracker{
+
+    unscented_kalman_tracker() {}
+
     unscented_kalman_tracker(vint2 startPt,
                           float dt = 0.2,
-                          float magnitudeOfAccelerationNoise = 0.5,
-                          size_t maxTrajectorySize = 20);
+                          int maxTrajectorySize = 20);
 
     const int getNumFramesWithoutUpdate();
 
+    void neFaitrien() {}
     // Indicate to this Kalman filter that it did not get an update this frame.
     void noUpdateThisFrame();
 
@@ -80,7 +82,8 @@ struct unscented_kalman_tracker{
     vint2 correct(vint2 pt);
     TrackingOutput latestTrackingOutput();
 //private :
-    std::unique_ptr<Unscented_Kalman_Filter> kf;
+    std::unique_ptr<Unscented_Kalman_Filter> ukf;
+    float dt =0.33;
     int numberOfFramesWithoutUpdate;
     int max_trajectory_size;
     // Store the latest prediction.
@@ -99,6 +102,7 @@ struct unscented_kalman_tracker{
 
 
 
-#include "kalmantracker.hpp"
+#include "basickalmantracker.hpp"
+#include "unscented_kalman_tracker.hpp"
 
 #endif // MULTIKALMANFILTER_HH

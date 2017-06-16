@@ -62,12 +62,32 @@ struct kalman_tracker_hough_ctx {
 feature_matching_hough_ctx feature_matching_hough_init(box2d domain);
 
 template <typename... OPTS>
-void feature_matching_hough_update(feature_matching_hough_ctx& ctx,
-                           const image2d<unsigned char>& frame1,
-                           const image2d<unsigned char>& frame2,
-                                 image2d<vuchar1> img, bool first,
-                           OPTS... options);
+void feature_matching_hough_update(feature_matching_hough_ctx& ftx,
+                                    std::vector<float>& frame1,
+                                    std::vector<float>& frame2,int type_video,image2d<vuchar1> img,
+                                   int T_theta,int rhomax,bool first, std::list<vint2>& old_values,
+                                   //float precision_runtime_balance = 0,
+                                   OPTS... options);
 
+float Distance_between_curve_L1(std::vector<float> frame1, std::vector<float>  frame2, int taille);
+
+float Distance_between_curve_L2(std::vector<float> frame1, std::vector<float>  frame2,  int taille);
+
+float sum_vector(std::vector<float> a);
+
+float mean_vector(std::vector<float> a);
+
+float sqsum(std::vector<float> a);
+
+float stdev(std::vector<float> nums);
+
+std::vector<float> operator-(std::vector<float> a, float b);
+
+std::vector<float> operator*(std::vector<float> a, std::vector<float> b);
+
+float pearsoncoeff(std::vector<float> X, std::vector<float> Y);
+
+float Correlation_Matrix_Pearson(Eigen::MatrixXd M1,Eigen::MatrixXd M2,int taille);
 
 
 void brute_force_matching(std::vector<vint2> descriptor1, std::vector<vint2> descriptor2,std::vector<int>& matches,int type);

@@ -5,7 +5,7 @@
 #include "video_extruder_hough.hh"
 #include "feature_matching_hough.hh"
 #include "multipointtracker.hh"
-#include "operations.hh"
+#include "miscellanous/operations.hh"
 
 namespace vppx{
 
@@ -329,8 +329,8 @@ std::list<vint2> Hough_Lines_Parallel(image2d<vuchar1> img,
 
 std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
                                          std::vector<float>& t_accumulator,
-                                         int Theta_max, float& max_of_the_accu, int threshold
-                                         , image2d<vuchar3>& cluster_colors, int nb_old)
+                                         int Theta_max, float& max_of_the_accu
+                                         )
 {
     timer t;
     t.start();
@@ -368,7 +368,7 @@ std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
                 float theta;
                 float alpha;
 
-                /*// Calcul de l'angle de la tangente au contour
+                // Calcul de l'angle de la tangente au contour
                 if (dx) alpha = atan(dy/dx); else alpha = M_PI/2;
                 // Calcul de theta, l'angle entre Ox et la droite
                 // passant par O et perpendiculaire à la droite D
@@ -380,11 +380,11 @@ std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
                     // 2eme cas : D est au dessus de O
                     // PI/2 < Theta < PI ; cx*j - cy*i > 0
                     else theta = alpha + M_PI/2;
-                }*/
-                if(dx*dy<0 && d*dy>0)
+                }
+                /*if(dx*dy<0 && d*dy>0)
                     theta = M_PI + atan(dy/dx);
                 else
-                    theta = atan(dy/dx);
+                    theta = atan(dy/dx);*/
                 float pos_theta = ((theta + M_PI)*(T_theta-1))/(2*M_PI);
                 //Prendre les coordonnees
                 int index_theta = (int)(trunc(pos_theta));
@@ -421,7 +421,7 @@ std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
 
     std::list<vfloat3> list_temp;
 
-    float threshold_hough = 500;
+    float threshold_hough = 200;
 
     for(int rho = 0 ; rho < rhomax ; rho ++ )
     {
@@ -457,7 +457,7 @@ std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
         for(auto& it : interestedPoints100  )
         {
             vint2 val = it;
-            if(fabs(val[0]-coord[0])<10 && fabs(val[1]-coord[1])<10)
+            if(fabs(val[0]-coord[0])<5 && fabs(val[1]-coord[1])<5)
             {
                 found = 1;
                 break;
@@ -469,7 +469,7 @@ std::list<vint2> Hough_Lines_Parallel_V2(image2d<vuchar1> img,
             interestedPoints100.push_back(coord);
             int theta = coord[1];
             int rho = coord[0];
-            cout << "theta " << theta << " rho " << rho << endl;
+            //cout << "theta " << theta << " rho " << rho << endl;
             int x1,x2,y1,y2;
             x1=x2=y1=y2=0;
             //intersection avec l'axe des x
@@ -1044,230 +1044,315 @@ cv::Mat accumulatorToFrame(std::list<vint2> interestedPoints, int rhomax, int T_
     int r = 0;
     for(auto& ip : interestedPoints)
     {
-        int radius = round(5-0.1*r);
-        circle(T,cv::Point(ip[1],ip[0]),radius,Scalar(255),CV_FILLED,8,0);
+        //int radius = round(5-0.1*r);
+        circle(T,cv::Point(ip[1],ip[0]),1,Scalar(255),CV_FILLED,8,0);
         r++;
         //break;
     }
     return T;
 }
 
-void Capture_Image(int mode, Theta_max discr,Type_video_hough type_video)
+void hough_image(int T_theta)
 {
     typedef image2d<vuchar1> Image;
-    char* link = "videos/endgp.avi";
+    Mat bv = cv::imread("m.png",0);
+    Image img = (from_opencv<vuchar1>(bv));
+    Hough_Accumulator(img,hough_parallel,T_theta);
+}
+
+void hough_video_extruder(int T_theta, char* link,Type_video_hough type_video)
+{
+    int cp=0;
+    bool first = true;
+    int nframes = 0;
+    //MultiPointTracker multitracking(vint2(0,0),20, 0.1,10, 0.2,0.5,20, 0.1,2);
+    cv::VideoWriter output_video;
+    image2d<uchar> prev_frame(make_box2d(1,1));
+    image2d<uchar> frame_gl(make_box2d(1,1));
+    video_extruder_hough_ctx ctx= video_extruder_hough_init(make_box2d(1,1));
+    keypoint_container<keypoint<int>, int> listes_clusters(make_box2d(1,1));
+    int us_cpt = 0;
+    foreach_videoframe1(link)| [&] (const image2d<vuchar3>& frame_cv){
+        if(nframes%1==0)
+        {
+            auto frame = rgb_to_graylevel<vuchar1>(frame_cv);
+            image2d<vuchar3> dr(frame.domain());
+            vpp::copy(dr, frame_cv);
+            timer t;
+            t.start();
+            int ncols = frame.ncols();
+            int nrows = frame.nrows();
+            int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
+            box2d domain = make_box2d(rhomax,T_theta);
+            if(first)
+            {
+                ctx = video_extruder_hough_init(domain);
+                keypoint_container<keypoint<int>, int> temp_container(domain);
+                listes_clusters = temp_container;
+                //listes_clusters(make_box2d(1,1));
+                image2d<uchar> prev_frame_temp(domain);
+                prev_frame = prev_frame_temp;
+                image2d<uchar> frame_gl_temp(domain);
+                frame_gl = frame_gl_temp;
+                output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
+                                  cv::Size(T_theta,rhomax), true);
+                first = false;
+            }
+            else
+            {
+                video_extruder_hough_update(ctx, prev_frame, frame_gl, frame,int(type_video),
+                                            _detector_th = 10,
+                                            _keypoint_spacing = 10,
+                                            _detector_period = 1,
+                                            _max_trajectory_length = 100);
+            }
+            t.end();
+
+            us_cpt += t.us();
+            if (!(nframes%10))
+            {
+                std::cout << "Tracker time: " << (us_cpt / 10000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
+                us_cpt = 0;
+            }
+            vpp::copy(frame_gl, prev_frame);
+            auto display = graylevel_to_rgb<vuchar3>(frame_gl);
+            //draw::draw_trajectories(display, ctx.trajectories, 3/*,T_theta,nrows,ncols*/);
+            cout << " frame no " << nframes << endl;
+            /*string filename = "result";
+            if(nframes<10)
+                filename = filename +"0"+ std::to_string(nframes);
+            else
+                filename = filename +std::to_string(nframes);
+            imwrite(filename+".bmp",to_opencv(dr));*/
+            if (output_video.isOpened())
+                output_video << to_opencv(display);
+        }
+
+        nframes++;
+    };
+}
+
+void hough_feature_matching(int T_theta, char* link,Type_video_hough type_video)
+{
+    int cp=0;
+    bool first = true;
+    int nframes = 0;
+    //MultiPointTracker multitracking(vint2(0,0),20, 0.1,10, 0.2,0.5,20, 0.1,2);
+    cv::VideoWriter output_video;
+    /**************************************/
+    std::vector<float> prev_acc;
+    std::vector<float> _acc_gl;
+    std::list<vint2> old_values;
+    /*************************************/
+    image2d<uchar> prev_frame(make_box2d(1,1));
+    image2d<uchar> frame_gl(make_box2d(1,1));
+    feature_matching_hough_ctx ctx= feature_matching_hough_init(make_box2d(1,1));
+    keypoint_container<keypoint<int>, int> listes_clusters(make_box2d(1,1));
+    int us_cpt = 0;
+    foreach_videoframe1(link)| [&] (const image2d<vuchar3>& frame_cv){
+        if(nframes%1==0)
+        {
+            cout << "pass" << endl;
+            auto frame = rgb_to_graylevel<vuchar1>(frame_cv);
+            image2d<vuchar3> dr(frame.domain());
+            vpp::copy(dr, frame_cv);
+            timer t;
+            t.start();
+            int ncols = frame.ncols();
+            int nrows = frame.nrows();
+            int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
+            box2d domain = make_box2d(rhomax,T_theta);
+            if(first)
+            {
+                std::vector<float> prev_acc_temp(rhomax*T_theta,0);
+                std::vector<float> _acc_gl_temp(rhomax*T_theta,0);
+                prev_acc = prev_acc_temp;
+                _acc_gl = _acc_gl_temp;
+                feature_matching_hough_update(ctx, prev_acc, _acc_gl,int(type_video),frame,T_theta,rhomax,first, old_values,
+                                            _detector_th = 10,
+                                            _keypoint_spacing = 10,
+                                            _detector_period = 1,
+                                            _max_trajectory_length = 100);
+                /*ctx = video_extruder_hough_init(domain);
+                keypoint_container<keypoint<int>, int> temp_container(domain);
+                listes_clusters = temp_container;
+                //listes_clusters(make_box2d(1,1));
+                image2d<uchar> prev_frame_temp(domain);
+                prev_frame = prev_frame_temp;
+                image2d<uchar> frame_gl_temp(domain);
+                frame_gl = frame_gl_temp;*/
+                output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
+                                  cv::Size(T_theta,rhomax), true);
+                first = false;
+            }
+            else
+            {
+                feature_matching_hough_update(ctx, prev_acc, _acc_gl,int(type_video),frame,T_theta,rhomax,first, old_values,
+                                            _detector_th = 10,
+                                            _keypoint_spacing = 10,
+                                            _detector_period = 1,
+                                            _max_trajectory_length = 100);
+            }
+            t.end();
+
+            for(int i =0 ;i < _acc_gl.size() ; i++ )
+            {
+                prev_acc[i] = _acc_gl[i];
+            }
+
+            us_cpt += t.us();
+            if (!(nframes%10))
+            {
+                std::cout << "Tracker time: " << (us_cpt / 10000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
+                us_cpt = 0;
+            }
+            cout << " frame no " << nframes << endl;
+        }
+
+        nframes++;
+    };
+}
+
+void hough_webcam(int T_theta)
+{
+    cv::VideoCapture cap(0); // open the default camera
+    typedef image2d<vuchar1> Image;
+    if(!cap.isOpened()){
+        cout<<"Camera could not load..."<<endl;
+        return;
+    }
+    else
+    {
+        cout << " it's okay " << endl;
+    }
+    while(1){
+        Mat frame,bv;
+        bool ctrl = cap.read(frame);
+        if(frame.channels()>1)
+            cv::cvtColor(frame, bv, cv::COLOR_BGR2GRAY);
+        else
+            bv = frame;
+        Image img = clone((from_opencv<vuchar1>(bv)), vpp::_border = 3);
+        Hough_Accumulator(img,hough_parallel_map,T_theta);
+        imshow("webcam",frame);
+        if(waitKey(0) == 27){
+            cout<<"The app is ended..."<<endl;
+            break;
+        }
+    }
+    namedWindow("webcam",CV_WINDOW_AUTOSIZE);
+}
+
+void hough_kalman(int T_theta, char* link,Type_video_hough type_video)
+{
+    int cp=0;
+    bool first = true;
+    int nframes = 0;
+    //MultiPointTracker multitracking(vint2(0,0),20, 0.1,10, 0.2,0.5,20, 0.1,2);
+    cv::VideoWriter output_video;
+    image2d<float> prev_frame(make_box2d(1,1));
+    image2d<float> curr_frame(make_box2d(1,1));
+    std::vector<float> prev_acc;
+    std::vector<float> curr_acc;
+    line_tracker_kalman_ctx ctx = line_tracker_kalman_init(20, 0.1,10, 0.2,0.5,20, 0.1,2);
+    keypoint_container<keypoint<int>, int> listes_clusters(make_box2d(1,1));
+    int us_cpt = 0;
+    foreach_videoframe1(link)| [&] (const image2d<vuchar3>& frame_cv){
+        if(nframes%1==0)
+        {
+            auto frame = rgb_to_graylevel<vuchar1>(frame_cv);
+            image2d<vuchar3> dr(frame.domain());
+            vpp::copy(dr, frame_cv);
+            timer t;
+            t.start();
+            if(first)
+            {
+                int ncols = frame.ncols();
+                int nrows = frame.nrows();
+                int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
+                box2d domain = make_box2d(rhomax,T_theta);
+                ctx = line_tracker_kalman_init(vint2(rhomax,T_theta),20, 0.1,10, 0.2,0.5,20, 0.1,2);
+                keypoint_container<keypoint<int>, int> temp_container(domain);
+                listes_clusters = temp_container;
+                //listes_clusters(make_box2d(1,1));
+                image2d<float> prev_frame_temp(domain);
+                prev_frame = prev_frame_temp;
+                image2d<float> frame_curr_temp(domain);
+                curr_frame = frame_curr_temp;
+                output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
+                                  cv::Size(T_theta,rhomax), true);
+                line_tracker_kalman_update(ctx, prev_frame, curr_frame,
+                                           prev_acc,curr_acc,first,
+                                           frame,int(type_video),
+                                            _detector_th = 10,
+                                            _keypoint_spacing = 10,
+                                            _detector_period = 1,
+                                            _max_trajectory_length = 100);
+                first = false;
+            }
+            else
+            {
+                line_tracker_kalman_update(ctx, prev_frame, curr_frame,
+                                           prev_acc,curr_acc,first,
+                                           frame,int(type_video),
+                                            _detector_th = 10,
+                                            _keypoint_spacing = 10,
+                                            _detector_period = 1,
+                                            _max_trajectory_length = 100);
+            }
+            t.end();
+
+            us_cpt += t.us();
+            if (!(nframes%10))
+            {
+                std::cout << "Tracker time: " << (us_cpt / 10000.f) << " ms/frame. "/* << ctx.trajectories.size() << " */ << "particles." << std::endl;
+                us_cpt = 0;
+            }
+            //vpp::copy(frame_gl, prev_frame);
+            //auto display = graylevel_to_rgb<vuchar3>(frame_gl);
+            //draw::draw_trajectories(display, ctx.trajectories, 3/*,T_theta,nrows,ncols*/);
+            cout << " frame no " << nframes << endl;
+            /*string filename = "result";
+            if(nframes<10)
+                filename = filename +"0"+ std::to_string(nframes);
+            else
+                filename = filename +std::to_string(nframes);
+            imwrite(filename+".bmp",to_opencv(dr));*/
+            if (output_video.isOpened())
+                output_video << to_opencv(dr);
+        }
+
+        nframes++;
+    };
+}
+
+void Capture_Image(int mode, Theta_max discr, Type_video_hough type_video, Type_tracking tracking_type)
+{
+    typedef image2d<vuchar1> Image;
+    char* link = "videos/mooving.avi";
     int T_theta = getThetaMax(discr);
     initializeGXSobel3x3();
     initializeGYSobel3x3();
     if(mode==mode_capture_photo)
     {
-        Mat bv = cv::imread("m.png",0);
-        Image img = (from_opencv<vuchar1>(bv));
-        Hough_Accumulator(img,hough_parallel,T_theta);
-    }
-    else if(mode==mode_capture_video)
-    {
-        cv::VideoCapture cap("videos/psychedelic-white-lines-hd-animation.avi");
-        Mat frame,bv;
-        int ranked = 0;
-        int ncols=0;
-        int nrows=0;
-        int rhomax = 0;
-        bool ctrl = cap.read(frame);
-        if(ctrl)
-        {
-            ncols = frame.cols;
-            nrows = frame.rows;
-            rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
-        }
-        else
-        {
-            return;
-        }
-        Size size2 = Size(T_theta, rhomax);
-        int codec = CV_FOURCC('M', 'J', 'P', 'G');
-        VideoWriter writer2("videos/video_.avi", codec, 1.0, size2, false);
-        writer2.open("videos/video_.avi", codec, 1.0, size2, false);
-        std::list<vint2> interestedPoints;
-        box2d domain = vpp::make_box2d(T_theta,rhomax);
-        //video_extruder_ctx ctx = video_extruder_init(domain);
-        image2d<unsigned char> prev_frame(domain);
-        bool first = true;
-        int nframes = 0;
-        int us_cpt = 0;
-        while(ctrl && ranked<100){
-            if(frame.channels()>1)
-                cv::cvtColor(frame, bv, cv::COLOR_BGR2GRAY);
-            else
-                bv = frame;
-            Image img = (from_opencv<vuchar1>(bv));
-
-            std::vector<float> t_accumulator(rhomax*T_theta,0);
-            //Hough_Accumulator_Video(img,hough_parallel,T_theta,t_accumulator,rhomax);
-            //
-
-            // writer2.write(Hough_Accumulator_Video_Map_and_Clusters(img,hough_parallel,T_theta,t_accumulator,interestedPoints,rhomax));
-            string filename = "result";
-            if(ranked<10)
-                filename = filename +"0"+ std::to_string(ranked);
-            else
-                filename = filename +std::to_string(ranked);
-            //cv::imwrite("images/"+filename+".bmp", Hough_Accumulator_Video_Map_and_Clusters(img,hough_parallel,T_theta,t_accumulator,interestedPoints,rhomax));
-            //cv::imwrite("images/"+filename+".bmp", Hough_Accumulator_Video_Clusters(img,hough_parallel,T_theta,t_accumulator,interestedPoints,t_accumulator_point,rhomax));
-            ctrl = cap.read(frame);
-            ranked++;
-        }
+        hough_image(T_theta);
     }
     else if(mode==mode_capture_try)
     {
-        int cp=0;
-        bool first = true;
-        int nframes = 0;
-        //MultiPointTracker multitracking(vint2(0,0),20, 0.1,10, 0.2,0.5,20, 0.1,2);
-        cv::VideoWriter output_video;
-        image2d<uchar> prev_frame(make_box2d(1,1));
-        image2d<uchar> frame_gl(make_box2d(1,1));
-        video_extruder_hough_ctx ctx= video_extruder_hough_init(make_box2d(1,1));
-        keypoint_container<keypoint<int>, int> listes_clusters(make_box2d(1,1));
-        int us_cpt = 0;
-        foreach_videoframe1(link)| [&] (const image2d<vuchar3>& frame_cv){
-            if(nframes%1==0)
-            {
-                auto frame = rgb_to_graylevel<vuchar1>(frame_cv);
-                image2d<vuchar3> dr(frame.domain());
-                vpp::copy(dr, frame_cv);
-                timer t;
-                t.start();
-                int ncols = frame.ncols();
-                int nrows = frame.nrows();
-                int rhomax = int(sqrt(pow(ncols,2)+pow(nrows,2)));
-                box2d domain = make_box2d(rhomax,T_theta);
-                if(first)
-                {
-                    ctx = video_extruder_hough_init(domain);
-                    keypoint_container<keypoint<int>, int> temp_container(domain);
-                    listes_clusters = temp_container;
-                    //listes_clusters(make_box2d(1,1));
-                    image2d<uchar> prev_frame_temp(domain);
-                    prev_frame = prev_frame_temp;
-                    image2d<uchar> frame_gl_temp(domain);
-                    frame_gl = frame_gl_temp;
-                    output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
-                                      cv::Size(T_theta,rhomax), true);
-                    first = false;
-                }
-                else
-                {
-                    video_extruder_hough_update(ctx, prev_frame, frame_gl, frame,int(type_video),
-                                                _detector_th = 10,
-                                                _keypoint_spacing = 10,
-                                                _detector_period = 1,
-                                                _max_trajectory_length = 100);
-                }
-                t.end();
-
-                us_cpt += t.us();
-                if (!(nframes%10))
-                {
-                    std::cout << "Tracker time: " << (us_cpt / 10000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
-                    us_cpt = 0;
-                }
-                vpp::copy(frame_gl, prev_frame);
-                auto display = graylevel_to_rgb<vuchar3>(frame_gl);
-                draw::draw_trajectories(display, ctx.trajectories, 3/*,T_theta,nrows,ncols*/);
-                cout << " frame no " << nframes << endl;
-                /*string filename = "result";
-                if(nframes<10)
-                    filename = filename +"0"+ std::to_string(nframes);
-                else
-                    filename = filename +std::to_string(nframes);
-                imwrite(filename+".bmp",to_opencv(dr));*/
-                if (output_video.isOpened())
-                    output_video << to_opencv(dr);
-            }
-
-            nframes++;
-        };
+        hough_video_extruder(T_theta,  link, type_video);
     }
-    else if(mode == mode_capture_vid_try)
+    else if(mode == mode_capture_local)
     {
-        box2d domain = videocapture_domain(link);
-        video_extruder_ctx ctx = video_extruder_init(domain);
-
-        cv::VideoWriter output_video;
-
-        output_video.open("videos/video_.avi", cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 30.f,
-                          cv::Size(domain.ncols(), domain.nrows()), true);
-
-
-        image2d<unsigned char> prev_frame(domain);
-
-        bool first = true;
-        int nframes = 0;
-
-        int us_cpt = 0;
-        foreach_videoframe(link) | [&] (const image2d<vuchar3>& frame_cv)
-        {
-            auto frame = clone(frame_cv, _border = 3);
-            fill_border_mirror(frame);
-            auto frame_gl = rgb_to_graylevel<unsigned char>(frame);
-            timer t;
-            t.start();
-            if (!first)
-                video_extruder_update(ctx, prev_frame, frame_gl,
-                                      _detector_th = 10,
-                                      _keypoint_spacing = 10,
-                                      _detector_period = 1,
-                                      _max_trajectory_length = 100);
-            else first = false;
-            t.end();
-
-            us_cpt += t.us();
-            if (!(nframes%100))
-            {
-                std::cout << "Tracker time: " << (us_cpt / 100000.f) << " ms/frame. " << ctx.trajectories.size() << " particles." << std::endl;
-                us_cpt = 0;
-            }
-
-            vpp::copy(frame_gl, prev_frame);
-            auto display = clone(frame);
-            //draw::draw_trajectories(display, ctx.trajectories, 200);
-            //cv::imshow("Trajectories", to_opencv(display));
-            //cv::waitKey(1);
-
-            if (output_video.isOpened())
-                output_video << to_opencv(display);
-
-            nframes++;
-        };
+        hough_feature_matching( T_theta,  link, type_video);
+    }
+    else if(mode==mode_capture_kalman)
+    {
+        cout << "kalman " << endl;
+        hough_kalman(T_theta, link,type_video);
     }
     else if(mode==mode_capture_webcam)
     {
-        cv::VideoCapture cap(0); // open the default camera
-        if(!cap.isOpened()){
-            cout<<"Camera could not load..."<<endl;
-            return;
-        }
-        else
-        {
-            cout << " it's okay " << endl;
-        }
-        while(1){
-            Mat frame,bv;
-            bool ctrl = cap.read(frame);
-            if(frame.channels()>1)
-                cv::cvtColor(frame, bv, cv::COLOR_BGR2GRAY);
-            else
-                bv = frame;
-            Image img = clone((from_opencv<vuchar1>(bv)), vpp::_border = 3);
-            Hough_Accumulator(img,hough_parallel_map,T_theta);
-            imshow("webcam",frame);
-            if(waitKey(0) == 27){
-                cout<<"The app is ended..."<<endl;
-                break;
-            }
-        }
-        namedWindow("webcam",CV_WINDOW_AUTOSIZE);
+        hough_webcam(T_theta);
     }
 }
 
